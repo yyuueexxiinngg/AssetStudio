@@ -1,9 +1,9 @@
 /* ======================================================================================== */
 /* FMOD Core API - C# wrapper.                                                              */
-/* Copyright (c), Firelight Technologies Pty, Ltd. 2004-2020.                               */
+/* Copyright (c), Firelight Technologies Pty, Ltd. 2004-2023.                               */
 /*                                                                                          */
 /* For more detail visit:                                                                   */
-/* https://fmod.com/resources/documentation-api?version=2.0&page=core-api.html              */
+/* https://fmod.com/docs/2.02/api/core-api.html                                             */
 /* ======================================================================================== */
 
 using System;
@@ -21,9 +21,9 @@ namespace FMOD
         FMOD version number.  Check this against FMOD::System::getVersion / System_GetVersion
         0xaaaabbcc -> aaaa = major version number.  bb = minor version number.  cc = development version number.
     */
-    public class VERSION
+    public partial class VERSION
     {
-        public const int    number = 0x00020022;
+        public const int    number = 0x00020217;
         public const string dll    = "fmod";
     }
 
@@ -149,6 +149,15 @@ namespace FMOD
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    public partial struct GUID
+    {
+        public int Data1;
+        public int Data2;
+        public int Data3;
+        public int Data4;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     public struct ASYNCREADINFO
     {
         public IntPtr   handle;                     /* [r] The file handle that was filled out in the open callback. */
@@ -185,8 +194,23 @@ namespace FMOD
         NNAUDIO,         /* Switch               - nn::audio.                           (Default on Switch) */
         WINSONIC,        /* Win10 / Xbox One     - Windows Sonic. */
         AAUDIO,          /* Android              - AAudio                               (Default on Android 8.0 and above) */
+        AUDIOWORKLET,
+        PHASE,
 
         MAX,             /* Maximum number of output types supported. */
+    }
+
+    public enum PORT_TYPE : int
+    {
+        MUSIC,
+        COPYRIGHT_MUSIC,
+        VOICE,
+        CONTROLLER,
+        PERSONAL,
+        VIBRATION,
+        AUX,
+
+        MAX
     }
 
     public enum DEBUG_MODE : int
@@ -320,6 +344,7 @@ namespace FMOD
         STREAM_FROM_UPDATE         = 0x00000001, /* No stream thread is created internally.  Streams are driven from System::update.  Mainly used with non-realtime outputs. */
         MIX_FROM_UPDATE            = 0x00000002, /* FMOD Mixer thread is woken up to do a mix when System::update is called rather than waking periodically on its own timer. */
         _3D_RIGHTHANDED            = 0x00000004, /* FMOD will treat +X as right, +Y as up and +Z as backwards (towards you). */
+        CLIP_OUTPUT                = 0x00000008,
         CHANNEL_LOWPASS            = 0x00000100, /* All FMOD_3D based voices will add a software lowpass filter effect into the DSP chain which is automatically used when Channel::set3DOcclusion is used or the geometry API.   This also causes sounds to sound duller when the sound goes behind the listener, as a fake HRTF style effect.  Use System::setAdvancedSettings to disable or adjust cutoff frequency for this feature. */
         CHANNEL_DISTANCEFILTER     = 0x00000200, /* All FMOD_3D based voices will add a software lowpass and highpass filter effect into the DSP chain which will act as a distance-automated bandpass filter. Use System::setAdvancedSettings to adjust the center frequency. */
         PROFILE_ENABLE             = 0x00010000, /* Enable TCP/IP based host which allows FMOD Designer or FMOD Profiler to connect to it, and view memory, CPU and the DSP network graph in real-time. */
@@ -482,6 +507,25 @@ namespace FMOD
         public  StringWrapper               functionparams;             /* Function parameters that the error ocurred on */
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct CPU_USAGE
+    {
+        public float    dsp;                    /* DSP mixing CPU usage. */
+        public float    stream;                 /* Streaming engine CPU usage. */
+        public float    geometry;               /* Geometry engine CPU usage. */
+        public float    update;                 /* System::update CPU usage. */
+        public float    convolution1;           /* Convolution reverb processing thread #1 CPU usage */
+        public float    convolution2;           /* Convolution reverb processing thread #2 CPU usage */
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DSP_DATA_PARAMETER_INFO
+    {
+        public IntPtr   data;
+        public uint     length;
+        public int      index;
+    }
+
     [Flags]
     public enum SYSTEM_CALLBACK_TYPE : uint
     {
@@ -498,29 +542,35 @@ namespace FMOD
         PREUPDATE              = 0x00000400,  /* Called at start of System::update function. */
         POSTUPDATE             = 0x00000800,  /* Called at end of System::update function. */
         RECORDLISTCHANGED      = 0x00001000,  /* Called from System::update when the enumerated list of recording devices has changed. */
+
+        BUFFEREDNOMIX          = 0x00002000,
+        DEVICEREINITIALIZE     = 0x00004000,
+        OUTPUTUNDERRUN         = 0x00008000,
+        RECORDPOSITIONCHANGED  = 0x00010000,
         ALL                    = 0xFFFFFFFF,  /* Pass this mask to System::setCallback to receive all callback types.  */
     }
 
     /*
         FMOD Callbacks
     */
-    public delegate RESULT DEBUG_CALLBACK           (DEBUG_FLAGS flags, StringWrapper file, int line, StringWrapper func, StringWrapper message);
+    public delegate RESULT DEBUG_CALLBACK           (DEBUG_FLAGS flags, IntPtr file, int line, IntPtr func, IntPtr message);
     public delegate RESULT SYSTEM_CALLBACK          (IntPtr system, SYSTEM_CALLBACK_TYPE type, IntPtr commanddata1, IntPtr commanddata2, IntPtr userdata);
-    public delegate RESULT CHANNELCONTROL_CALLBACK(IntPtr channelcontrol, CHANNELCONTROL_TYPE controltype, CHANNELCONTROL_CALLBACK_TYPE callbacktype, IntPtr commanddata1, IntPtr commanddata2);
+    public delegate RESULT CHANNELCONTROL_CALLBACK  (IntPtr channelcontrol, CHANNELCONTROL_TYPE controltype, CHANNELCONTROL_CALLBACK_TYPE callbacktype, IntPtr commanddata1, IntPtr commanddata2);
+    public delegate RESULT DSP_CALLBACK             (IntPtr dsp, DSP_CALLBACK_TYPE type, IntPtr data);
     public delegate RESULT SOUND_NONBLOCK_CALLBACK  (IntPtr sound, RESULT result);
     public delegate RESULT SOUND_PCMREAD_CALLBACK   (IntPtr sound, IntPtr data, uint datalen);
     public delegate RESULT SOUND_PCMSETPOS_CALLBACK (IntPtr sound, int subsound, uint position, TIMEUNIT postype);
-    public delegate RESULT FILE_OPEN_CALLBACK       (StringWrapper name, ref uint filesize, ref IntPtr handle, IntPtr userdata);
+    public delegate RESULT FILE_OPEN_CALLBACK       (IntPtr name, ref uint filesize, ref IntPtr handle, IntPtr userdata);
     public delegate RESULT FILE_CLOSE_CALLBACK      (IntPtr handle, IntPtr userdata);
     public delegate RESULT FILE_READ_CALLBACK       (IntPtr handle, IntPtr buffer, uint sizebytes, ref uint bytesread, IntPtr userdata);
     public delegate RESULT FILE_SEEK_CALLBACK       (IntPtr handle, uint pos, IntPtr userdata);
     public delegate RESULT FILE_ASYNCREAD_CALLBACK  (IntPtr info, IntPtr userdata);
     public delegate RESULT FILE_ASYNCCANCEL_CALLBACK(IntPtr info, IntPtr userdata);
-    public delegate RESULT FILE_ASYNCDONE_FUNC      (IntPtr info, RESULT result);
-    public delegate IntPtr MEMORY_ALLOC_CALLBACK    (uint size, MEMORY_TYPE type, StringWrapper sourcestr);
-    public delegate IntPtr MEMORY_REALLOC_CALLBACK  (IntPtr ptr, uint size, MEMORY_TYPE type, StringWrapper sourcestr);
-    public delegate void   MEMORY_FREE_CALLBACK     (IntPtr ptr, MEMORY_TYPE type, StringWrapper sourcestr);
-    public delegate float  CB_3D_ROLLOFF_CALLBACK      (IntPtr channelcontrol, float distance);
+    public delegate void   FILE_ASYNCDONE_FUNC      (IntPtr info, RESULT result);
+    public delegate IntPtr MEMORY_ALLOC_CALLBACK    (uint size, MEMORY_TYPE type, IntPtr sourcestr);
+    public delegate IntPtr MEMORY_REALLOC_CALLBACK  (IntPtr ptr, uint size, MEMORY_TYPE type, IntPtr sourcestr);
+    public delegate void   MEMORY_FREE_CALLBACK     (IntPtr ptr, MEMORY_TYPE type, IntPtr sourcestr);
+    public delegate float  CB_3D_ROLLOFF_CALLBACK   (IntPtr channelcontrol, float distance);
 
     public enum DSP_RESAMPLER : int
     {
@@ -531,6 +581,13 @@ namespace FMOD
         SPLINE,          /* 5 point spline interpolation.  Slowest resampling method but best quality. */
 
         MAX,             /* Maximum number of resample methods supported. */
+    }
+
+    public enum DSP_CALLBACK_TYPE : int
+    {
+        DATAPARAMETERRELEASE,
+
+        MAX,
     }
 
     public enum DSPCONNECTION_TYPE : int
@@ -599,7 +656,8 @@ namespace FMOD
 
     public struct PORT_INDEX
     {
-        public const ulong NONE = 0xFFFFFFFFFFFFFFFF;
+        public const ulong NONE               = 0xFFFFFFFFFFFFFFFF;
+        public const ulong FLAG_VR_CONTROLLER = 0x1000000000000000;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -616,20 +674,20 @@ namespace FMOD
         public int                         numsubsounds;           /* [w]   Optional. Specify 0 to ignore or have no subsounds.  In a user created multi-sample sound, specify the number of subsounds within the sound that are accessable with Sound::getSubSound / SoundGetSubSound. */
         public IntPtr                      inclusionlist;          /* [w]   Optional. Specify 0 to ignore. In a multi-sample format such as .FSB/.DLS/.SF2 it may be desirable to specify only a subset of sounds to be loaded out of the whole file.  This is an array of subsound indicies to load into memory when created. */
         public int                         inclusionlistnum;       /* [w]   Optional. Specify 0 to ignore. This is the number of integers contained within the */
-        public SOUND_PCMREAD_CALLBACK      pcmreadcallback;        /* [w]   Optional. Specify 0 to ignore. Callback to 'piggyback' on FMOD's read functions and accept or even write PCM data while FMOD is opening the sound.  Used for user sounds created with OPENUSER or for capturing decoded data as FMOD reads it. */
-        public SOUND_PCMSETPOS_CALLBACK    pcmsetposcallback;      /* [w]   Optional. Specify 0 to ignore. Callback for when the user calls a seeking function such as Channel::setPosition within a multi-sample sound, and for when it is opened.*/
-        public SOUND_NONBLOCK_CALLBACK     nonblockcallback;       /* [w]   Optional. Specify 0 to ignore. Callback for successful completion, or error while loading a sound that used the FMOD_NONBLOCKING flag.*/
+        public IntPtr                      pcmreadcallback_internal;        /* [w]   Optional. Specify 0 to ignore. Callback to 'piggyback' on FMOD's read functions and accept or even write PCM data while FMOD is opening the sound.  Used for user sounds created with OPENUSER or for capturing decoded data as FMOD reads it. */
+        public IntPtr                      pcmsetposcallback_internal;      /* [w]   Optional. Specify 0 to ignore. Callback for when the user calls a seeking function such as Channel::setPosition within a multi-sample sound, and for when it is opened.*/
+        public IntPtr                      nonblockcallback_internal;       /* [w]   Optional. Specify 0 to ignore. Callback for successful completion, or error while loading a sound that used the FMOD_NONBLOCKING flag.*/
         public IntPtr                      dlsname;                /* [w]   Optional. Specify 0 to ignore. Filename for a DLS or SF2 sample set when loading a MIDI file.   If not specified, on windows it will attempt to open /windows/system32/drivers/gm.dls, otherwise the MIDI will fail to open.  */
         public IntPtr                      encryptionkey;          /* [w]   Optional. Specify 0 to ignore. Key for encrypted FSB file.  Without this key an encrypted FSB file will not load. */
         public int                         maxpolyphony;           /* [w]   Optional. Specify 0 to ingore. For sequenced formats with dynamic channel allocation such as .MID and .IT, this specifies the maximum voice count allowed while playing.  .IT defaults to 64.  .MID defaults to 32. */
         public IntPtr                      userdata;               /* [w]   Optional. Specify 0 to ignore. This is user data to be attached to the sound during creation.  Access via Sound::getUserData. */
         public SOUND_TYPE                  suggestedsoundtype;     /* [w]   Optional. Specify 0 or FMOD_SOUND_TYPE_UNKNOWN to ignore.  Instead of scanning all codec types, use this to speed up loading by making it jump straight to this codec. */
-        public FILE_OPEN_CALLBACK          fileuseropen;           /* [w]   Optional. Specify 0 to ignore. Callback for opening this file. */
-        public FILE_CLOSE_CALLBACK         fileuserclose;          /* [w]   Optional. Specify 0 to ignore. Callback for closing this file. */
-        public FILE_READ_CALLBACK          fileuserread;           /* [w]   Optional. Specify 0 to ignore. Callback for reading from this file. */
-        public FILE_SEEK_CALLBACK          fileuserseek;           /* [w]   Optional. Specify 0 to ignore. Callback for seeking within this file. */
-        public FILE_ASYNCREAD_CALLBACK     fileuserasyncread;      /* [w]   Optional. Specify 0 to ignore. Callback for asyncronously reading from this file. */
-        public FILE_ASYNCCANCEL_CALLBACK   fileuserasynccancel;    /* [w]   Optional. Specify 0 to ignore. Callback for cancelling an asyncronous read. */
+        public IntPtr                      fileuseropen_internal;           /* [w]   Optional. Specify 0 to ignore. Callback for opening this file. */
+        public IntPtr                      fileuserclose_internal;          /* [w]   Optional. Specify 0 to ignore. Callback for closing this file. */
+        public IntPtr                      fileuserread_internal;           /* [w]   Optional. Specify 0 to ignore. Callback for reading from this file. */
+        public IntPtr                      fileuserseek_internal;           /* [w]   Optional. Specify 0 to ignore. Callback for seeking within this file. */
+        public IntPtr                      fileuserasyncread_internal;      /* [w]   Optional. Specify 0 to ignore. Callback for asyncronously reading from this file. */
+        public IntPtr                      fileuserasynccancel_internal;    /* [w]   Optional. Specify 0 to ignore. Callback for cancelling an asyncronous read. */
         public IntPtr                      fileuserdata;           /* [w]   Optional. Specify 0 to ignore. User data to be passed into the file callbacks. */
         public int                         filebuffersize;         /* [w]   Optional. Specify 0 to ignore. Buffer size for reading the file, -1 to disable buffering, or 0 for system default. */
         public CHANNELORDER                channelorder;           /* [w]   Optional. Specify 0 to ignore. Use this to differ the way fmod maps multichannel sounds to speakers.  See FMOD_CHANNELORDER for more. */
@@ -641,6 +699,53 @@ namespace FMOD
         public uint                        minmidigranularity;     /* [w]   Optional. Specify 0 to ignore. Allows you to set a minimum desired MIDI mixer granularity. Values smaller than 512 give greater than default accuracy at the cost of more CPU and vise versa. Specify 0 for default (512 samples). */
         public int                         nonblockthreadid;       /* [w]   Optional. Specify 0 to ignore. Specifies a thread index to execute non blocking load on.  Allows for up to 5 threads to be used for loading at once.  This is to avoid one load blocking another.  Maximum value = 4. */
         public IntPtr                      fsbguid;                /* [r/w] Optional. Specify 0 to ignore. Allows you to provide the GUID lookup for cached FSB header info. Once loaded the GUID will be written back to the pointer. This is to avoid seeking and reading the FSB header. */
+
+        public SOUND_PCMREAD_CALLBACK pcmreadcallback
+        {
+            set { pcmreadcallback_internal = (value == null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(value)); }
+            get { return pcmreadcallback_internal == IntPtr.Zero ? null : (SOUND_PCMREAD_CALLBACK)Marshal.GetDelegateForFunctionPointer(pcmreadcallback_internal, typeof(SOUND_PCMREAD_CALLBACK)); }
+        }
+        public SOUND_PCMSETPOS_CALLBACK pcmsetposcallback
+        {
+            set { pcmsetposcallback_internal = (value == null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(value)); }
+            get { return pcmsetposcallback_internal == IntPtr.Zero ? null : (SOUND_PCMSETPOS_CALLBACK)Marshal.GetDelegateForFunctionPointer(pcmsetposcallback_internal, typeof(SOUND_PCMSETPOS_CALLBACK)); }
+        }
+        public SOUND_NONBLOCK_CALLBACK nonblockcallback
+        {
+            set { nonblockcallback_internal = (value == null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(value)); }
+            get { return nonblockcallback_internal == IntPtr.Zero ? null : (SOUND_NONBLOCK_CALLBACK)Marshal.GetDelegateForFunctionPointer(nonblockcallback_internal, typeof(SOUND_NONBLOCK_CALLBACK)); }
+        }
+        public FILE_OPEN_CALLBACK fileuseropen
+        {
+            set { fileuseropen_internal = (value == null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(value)); }
+            get { return fileuseropen_internal == IntPtr.Zero ? null : (FILE_OPEN_CALLBACK)Marshal.GetDelegateForFunctionPointer(fileuseropen_internal, typeof(FILE_OPEN_CALLBACK)); }
+        }
+        public FILE_CLOSE_CALLBACK fileuserclose
+        {
+            set { fileuserclose_internal = (value == null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(value)); }
+            get { return fileuserclose_internal == IntPtr.Zero ? null : (FILE_CLOSE_CALLBACK)Marshal.GetDelegateForFunctionPointer(fileuserclose_internal, typeof(FILE_CLOSE_CALLBACK)); }
+        }
+        public FILE_READ_CALLBACK fileuserread
+        {
+            set { fileuserread_internal = (value == null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(value)); }
+            get { return fileuserread_internal == IntPtr.Zero ? null : (FILE_READ_CALLBACK)Marshal.GetDelegateForFunctionPointer(fileuserread_internal, typeof(FILE_READ_CALLBACK)); }
+        }
+        public FILE_SEEK_CALLBACK fileuserseek
+        {
+            set { fileuserseek_internal = (value == null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(value)); }
+            get { return fileuserseek_internal == IntPtr.Zero ? null : (FILE_SEEK_CALLBACK)Marshal.GetDelegateForFunctionPointer(fileuserseek_internal, typeof(FILE_SEEK_CALLBACK)); }
+        }
+        public FILE_ASYNCREAD_CALLBACK fileuserasyncread
+        {
+            set { fileuserasyncread_internal = (value == null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(value)); }
+            get { return fileuserasyncread_internal == IntPtr.Zero ? null : (FILE_ASYNCREAD_CALLBACK)Marshal.GetDelegateForFunctionPointer(fileuserasyncread_internal, typeof(FILE_ASYNCREAD_CALLBACK)); }
+        }
+        public FILE_ASYNCCANCEL_CALLBACK fileuserasynccancel
+        {
+            set { fileuserasynccancel_internal = (value == null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(value)); }
+            get { return fileuserasynccancel_internal == IntPtr.Zero ? null : (FILE_ASYNCCANCEL_CALLBACK)Marshal.GetDelegateForFunctionPointer(fileuserasynccancel_internal, typeof(FILE_ASYNCCANCEL_CALLBACK)); }
+        }
+
     }
 
 #pragma warning disable 414
@@ -714,7 +819,7 @@ namespace FMOD
     [StructLayout(LayoutKind.Sequential)]
     public struct ADVANCEDSETTINGS
     {
-        public int                 cbSize;                     /* [w]   Size of this structure.  Use sizeof(FMOD_ADVANCEDSETTINGS) */
+       public int                 cbSize;                     /* [w]   Size of this structure.  Use sizeof(FMOD_ADVANCEDSETTINGS) */
         public int                 maxMPEGCodecs;              /* [r/w] Optional. Specify 0 to ignore. For use with FMOD_CREATECOMPRESSEDSAMPLE only.  MPEG   codecs consume 30,528 bytes per instance and this number will determine how many MPEG   channels can be played simultaneously. Default = 32. */
         public int                 maxADPCMCodecs;             /* [r/w] Optional. Specify 0 to ignore. For use with FMOD_CREATECOMPRESSEDSAMPLE only.  ADPCM  codecs consume  3,128 bytes per instance and this number will determine how many ADPCM  channels can be played simultaneously. Default = 32. */
         public int                 maxXMACodecs;               /* [r/w] Optional. Specify 0 to ignore. For use with FMOD_CREATECOMPRESSEDSAMPLE only.  XMA    codecs consume 14,836 bytes per instance and this number will determine how many XMA    channels can be played simultaneously. Default = 32. */
@@ -736,8 +841,9 @@ namespace FMOD
         public uint                stackSizeNonBlocking;       /* [r/w] Optional. Specify 0 to ignore. Specify the stack size for the FMOD_NONBLOCKING loading thread.  Useful for custom codecs that use excess stack.  Default 65,536 (64kb) */
         public uint                stackSizeMixer;             /* [r/w] Optional. Specify 0 to ignore. Specify the stack size for the FMOD mixer thread.  Useful for custom dsps that use excess stack.  Default 49,152 (48kb) */
         public DSP_RESAMPLER       resamplerMethod;            /* [r/w] Optional. Specify 0 to ignore. Resampling method used with fmod's software mixer.  See FMOD_DSP_RESAMPLER for details on methods. */
-        public uint                commandQueueSize;           /* [r/w] Optional. Specify 0 to ignore. Specify the command queue size for thread safe processing.  Default 2048 (2kb) */
         public uint                randomSeed;                 /* [r/w] Optional. Specify 0 to ignore. Seed value that FMOD will use to initialize its internal random number generators. */
+        public int                 maxConvolutionThreads;
+        public int                 maxOpusCodecs;
     }
 
     [Flags]
@@ -745,6 +851,119 @@ namespace FMOD
     {
         CONNECTED = 0x00000001, /* Device is currently plugged in. */
         DEFAULT   = 0x00000002, /* Device is the users preferred choice. */
+    }
+
+    public enum THREAD_PRIORITY : int
+    {
+        /* Platform specific priority range */
+        PLATFORM_MIN        = -32 * 1024,
+        PLATFORM_MAX        =  32 * 1024,
+
+        /* Platform agnostic priorities, maps internally to platform specific value */
+        DEFAULT             = PLATFORM_MIN - 1,
+        LOW                 = PLATFORM_MIN - 2,
+        MEDIUM              = PLATFORM_MIN - 3,
+        HIGH                = PLATFORM_MIN - 4,
+        VERY_HIGH           = PLATFORM_MIN - 5,
+        EXTREME             = PLATFORM_MIN - 6,
+        CRITICAL            = PLATFORM_MIN - 7,
+
+        /* Thread defaults */
+        MIXER               = EXTREME,
+        FEEDER              = CRITICAL,
+        STREAM              = VERY_HIGH,
+        FILE                = HIGH,
+        NONBLOCKING         = HIGH,
+        RECORD              = HIGH,
+        GEOMETRY            = LOW,
+        PROFILER            = MEDIUM,
+        STUDIO_UPDATE       = MEDIUM,
+        STUDIO_LOAD_BANK    = MEDIUM,
+        STUDIO_LOAD_SAMPLE  = MEDIUM,
+        CONVOLUTION1        = VERY_HIGH,
+        CONVOLUTION2        = VERY_HIGH
+
+    }
+
+    public enum THREAD_STACK_SIZE : uint
+    {
+        DEFAULT             = 0,
+        MIXER               = 80  * 1024,
+        FEEDER              = 16  * 1024,
+        STREAM              = 96  * 1024,
+        FILE                = 64  * 1024,
+        NONBLOCKING         = 112 * 1024,
+        RECORD              = 16  * 1024,
+        GEOMETRY            = 48  * 1024,
+        PROFILER            = 128 * 1024,
+        STUDIO_UPDATE       = 96  * 1024,
+        STUDIO_LOAD_BANK    = 96  * 1024,
+        STUDIO_LOAD_SAMPLE  = 96  * 1024,
+        CONVOLUTION1        = 16  * 1024,
+        CONVOLUTION2        = 16  * 1024
+    }
+
+    [Flags]
+    public enum THREAD_AFFINITY : long
+    {
+        /* Platform agnostic thread groupings */
+        GROUP_DEFAULT       = 0x4000000000000000,
+        GROUP_A             = 0x4000000000000001,
+        GROUP_B             = 0x4000000000000002,
+        GROUP_C             = 0x4000000000000003,
+
+        /* Thread defaults */
+        MIXER               = GROUP_A,
+        FEEDER              = GROUP_C,
+        STREAM              = GROUP_C,
+        FILE                = GROUP_C,
+        NONBLOCKING         = GROUP_C,
+        RECORD              = GROUP_C,
+        GEOMETRY            = GROUP_C,
+        PROFILER            = GROUP_C,
+        STUDIO_UPDATE       = GROUP_B,
+        STUDIO_LOAD_BANK    = GROUP_C,
+        STUDIO_LOAD_SAMPLE  = GROUP_C,
+        CONVOLUTION1        = GROUP_C,
+        CONVOLUTION2        = GROUP_C,
+
+        /* Core mask, valid up to 1 << 61 */
+        CORE_ALL            = 0,
+        CORE_0              = 1 << 0,
+        CORE_1              = 1 << 1,
+        CORE_2              = 1 << 2,
+        CORE_3              = 1 << 3,
+        CORE_4              = 1 << 4,
+        CORE_5              = 1 << 5,
+        CORE_6              = 1 << 6,
+        CORE_7              = 1 << 7,
+        CORE_8              = 1 << 8,
+        CORE_9              = 1 << 9,
+        CORE_10             = 1 << 10,
+        CORE_11             = 1 << 11,
+        CORE_12             = 1 << 12,
+        CORE_13             = 1 << 13,
+        CORE_14             = 1 << 14,
+        CORE_15             = 1 << 15
+    }
+
+    public enum THREAD_TYPE : int
+    {
+        MIXER,
+        FEEDER,
+        STREAM,
+        FILE,
+        NONBLOCKING,
+        RECORD,
+        GEOMETRY,
+        PROFILER,
+        STUDIO_UPDATE,
+        STUDIO_LOAD_BANK,
+        STUDIO_LOAD_SAMPLE,
+        CONVOLUTION1,
+        CONVOLUTION2,
+
+        MAX
     }
 
     /*
@@ -761,16 +980,19 @@ namespace FMOD
 
         public static RESULT System_Create(out System system)
         {
-            return FMOD5_System_Create(out system.handle);
+            return FMOD5_System_Create(out system.handle, VERSION.number);
         }
 
-#region importfunctions
+        #region importfunctions
         [DllImport(VERSION.dll)]
-        private static extern RESULT FMOD5_System_Create(out IntPtr system);
+        private static extern RESULT FMOD5_System_Create(out IntPtr system, uint headerversion);
 
-#endregion
+        #endregion
     }
 
+    /*
+        FMOD global system functions (optional).
+    */
     public struct Memory
     {
         public static RESULT Initialize(IntPtr poolmem, int poollen, MEMORY_ALLOC_CALLBACK useralloc, MEMORY_REALLOC_CALLBACK userrealloc, MEMORY_FREE_CALLBACK userfree, MEMORY_TYPE memtypeflags = MEMORY_TYPE.ALL)
@@ -783,13 +1005,13 @@ namespace FMOD
             return FMOD5_Memory_GetStats(out currentalloced, out maxalloced, blocking);
         }
 
-#region importfunctions
+        #region importfunctions
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_Memory_Initialize(IntPtr poolmem, int poollen, MEMORY_ALLOC_CALLBACK useralloc, MEMORY_REALLOC_CALLBACK userrealloc, MEMORY_FREE_CALLBACK userfree, MEMORY_TYPE memtypeflags);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_Memory_GetStats  (out int currentalloced, out int maxalloced, bool blocking);
 
-#endregion
+        #endregion
     }
 
     public struct Debug
@@ -802,11 +1024,24 @@ namespace FMOD
             }
         }
 
-#region importfunctions
+        #region importfunctions
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_Debug_Initialize(DEBUG_FLAGS flags, DEBUG_MODE mode, DEBUG_CALLBACK callback, byte[] filename);
 
-#endregion
+        #endregion
+    }
+
+    public struct Thread
+    {
+        public static RESULT SetAttributes(THREAD_TYPE type, THREAD_AFFINITY affinity = THREAD_AFFINITY.GROUP_DEFAULT, THREAD_PRIORITY priority = THREAD_PRIORITY.DEFAULT, THREAD_STACK_SIZE stacksize = THREAD_STACK_SIZE.DEFAULT)
+        {
+            return FMOD5_Thread_SetAttributes(type, affinity, priority, stacksize);
+        }
+
+        #region importfunctions
+        [DllImport(VERSION.dll)]
+        private static extern RESULT FMOD5_Thread_SetAttributes(THREAD_TYPE type, THREAD_AFFINITY affinity, THREAD_PRIORITY priority, THREAD_STACK_SIZE stacksize);
+        #endregion
     }
 
     /*
@@ -819,7 +1054,7 @@ namespace FMOD
             return FMOD5_System_Release(this.handle);
         }
 
-        // Pre-init functions.
+        // Setup functions.
         public RESULT setOutput(OUTPUTTYPE output)
         {
             return FMOD5_System_SetOutput(this.handle, output);
@@ -891,12 +1126,12 @@ namespace FMOD
         }
         public RESULT setAdvancedSettings(ref ADVANCEDSETTINGS settings)
         {
-            settings.cbSize = Marshal.SizeOf(settings);
+            settings.cbSize = MarshalHelper.SizeOf(typeof(ADVANCEDSETTINGS));
             return FMOD5_System_SetAdvancedSettings(this.handle, ref settings);
         }
         public RESULT getAdvancedSettings(ref ADVANCEDSETTINGS settings)
         {
-            settings.cbSize = Marshal.SizeOf(settings);
+            settings.cbSize = MarshalHelper.SizeOf(typeof(ADVANCEDSETTINGS));
             return FMOD5_System_GetAdvancedSettings(this.handle, ref settings);
         }
         public RESULT setCallback(SYSTEM_CALLBACK callback, SYSTEM_CALLBACK_TYPE callbackmask = SYSTEM_CALLBACK_TYPE.ALL)
@@ -972,24 +1207,10 @@ namespace FMOD
         {
             return FMOD5_System_GetDSPInfoByPlugin(this.handle, handle, out description);
         }
-        /*
-        public RESULT registerCodec          (ref CODEC_DESCRIPTION description, out uint handle, uint priority)
-        public RESULT registerCodec          (ref CODEC_DESCRIPTION description, out uint handle, uint priority = 0)
-        public RESULT registerCodec(ref CODEC_DESCRIPTION description, out uint handle, uint priority)
-        {
-            return FMOD5_System_RegisterCodec(this.handle, ref description, out handle, priority);
-        }
-        */
         public RESULT registerDSP(ref DSP_DESCRIPTION description, out uint handle)
         {
             return FMOD5_System_RegisterDSP(this.handle, ref description, out handle);
         }
-        /*
-        public RESULT registerOutput(ref OUTPUT_DESCRIPTION description, out uint handle)
-        {
-            return FMOD5_System_RegisterOutput(this.handle, ref description, out handle);
-        }
-        */
 
         // Init/Close.
         public RESULT init(int maxchannels, INITFLAGS flags, IntPtr extradriverdata)
@@ -1084,9 +1305,9 @@ namespace FMOD
         {
             return FMOD5_System_GetChannelsPlaying(this.handle, out channels, out realchannels);
         }
-        public RESULT getCPUUsage(out float dsp, out float stream, out float geometry, out float update, out float total)
+        public RESULT getCPUUsage(out CPU_USAGE usage)
         {
-            return FMOD5_System_GetCPUUsage(this.handle, out dsp, out stream, out geometry, out update, out total);
+            return FMOD5_System_GetCPUUsage(this.handle, out usage);
         }
         public RESULT getFileUsage(out Int64 sampleBytesRead, out Int64 streamBytesRead, out Int64 otherBytesRead)
         {
@@ -1112,7 +1333,7 @@ namespace FMOD
         public RESULT createSound(string name, MODE mode, out Sound sound)
         {
             CREATESOUNDEXINFO exinfo = new CREATESOUNDEXINFO();
-            exinfo.cbsize = Marshal.SizeOf(exinfo);
+            exinfo.cbsize = MarshalHelper.SizeOf(typeof(CREATESOUNDEXINFO));
 
             return createSound(name, mode, ref exinfo, out sound);
         }
@@ -1134,7 +1355,7 @@ namespace FMOD
         public RESULT createStream(string name, MODE mode, out Sound sound)
         {
             CREATESOUNDEXINFO exinfo = new CREATESOUNDEXINFO();
-            exinfo.cbsize = Marshal.SizeOf(exinfo);
+            exinfo.cbsize = MarshalHelper.SizeOf(typeof(CREATESOUNDEXINFO));
 
             return createStream(name, mode, ref exinfo, out sound);
         }
@@ -1176,6 +1397,10 @@ namespace FMOD
         {
             return FMOD5_System_GetChannel(this.handle, channelid, out channel.handle);
         }
+        public RESULT getDSPInfoByType(DSP_TYPE type, out IntPtr description)
+        {
+            return FMOD5_System_GetDSPInfoByType(this.handle, type, out description);
+        }
         public RESULT getMasterChannelGroup(out ChannelGroup channelgroup)
         {
             return FMOD5_System_GetMasterChannelGroup(this.handle, out channelgroup.handle);
@@ -1186,7 +1411,7 @@ namespace FMOD
         }
 
         // Routing to ports.
-        public RESULT attachChannelGroupToPort(uint portType, ulong portIndex, ChannelGroup channelgroup, bool passThru = false)
+        public RESULT attachChannelGroupToPort(PORT_TYPE portType, ulong portIndex, ChannelGroup channelgroup, bool passThru = false)
         {
             return FMOD5_System_AttachChannelGroupToPort(this.handle, portType, portIndex, channelgroup.handle, passThru);
         }
@@ -1317,7 +1542,7 @@ namespace FMOD
             return FMOD5_System_GetUserData(this.handle, out userdata);
         }
 
-#region importfunctions
+        #region importfunctions
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_System_Release                   (IntPtr system);
         [DllImport(VERSION.dll)]
@@ -1378,12 +1603,8 @@ namespace FMOD
         private static extern RESULT FMOD5_System_CreateDSPByPlugin         (IntPtr system, uint handle, out IntPtr dsp);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_System_GetDSPInfoByPlugin        (IntPtr system, uint handle, out IntPtr description);
-        //[DllImport(VERSION.dll)]
-        //private static extern RESULT FMOD5_System_RegisterCodec           (IntPtr system, out CODEC_DESCRIPTION description, out uint handle, uint priority);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_System_RegisterDSP               (IntPtr system, ref DSP_DESCRIPTION description, out uint handle);
-        //[DllImport(VERSION.dll)]
-        //private static extern RESULT FMOD5_System_RegisterOutput          (IntPtr system, ref OUTPUT_DESCRIPTION description, out uint handle);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_System_Init                      (IntPtr system, int maxchannels, INITFLAGS flags, IntPtr extradriverdata);
         [DllImport(VERSION.dll)]
@@ -1429,7 +1650,7 @@ namespace FMOD
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_System_GetChannelsPlaying        (IntPtr system, out int channels, out int realchannels);
         [DllImport(VERSION.dll)]
-        private static extern RESULT FMOD5_System_GetCPUUsage               (IntPtr system, out float dsp, out float stream, out float geometry, out float update, out float total);
+        private static extern RESULT FMOD5_System_GetCPUUsage               (IntPtr system, out CPU_USAGE usage);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_System_GetFileUsage              (IntPtr system, out Int64 sampleBytesRead, out Int64 streamBytesRead, out Int64 otherBytesRead);
         [DllImport(VERSION.dll)]
@@ -1457,11 +1678,13 @@ namespace FMOD
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_System_GetChannel                (IntPtr system, int channelid, out IntPtr channel);
         [DllImport(VERSION.dll)]
+        private static extern RESULT FMOD5_System_GetDSPInfoByType          (IntPtr system, DSP_TYPE type, out IntPtr description);
+        [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_System_GetMasterChannelGroup     (IntPtr system, out IntPtr channelgroup);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_System_GetMasterSoundGroup       (IntPtr system, out IntPtr soundgroup);
         [DllImport(VERSION.dll)]
-        private static extern RESULT FMOD5_System_AttachChannelGroupToPort  (IntPtr system, uint portType, ulong portIndex, IntPtr channelgroup, bool passThru);
+        private static extern RESULT FMOD5_System_AttachChannelGroupToPort  (IntPtr system, PORT_TYPE portType, ulong portIndex, IntPtr channelgroup, bool passThru);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_System_DetachChannelGroupFromPort(IntPtr system, IntPtr channelgroup);
         [DllImport(VERSION.dll)]
@@ -1506,16 +1729,17 @@ namespace FMOD
         private static extern RESULT FMOD5_System_SetUserData               (IntPtr system, IntPtr userdata);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_System_GetUserData               (IntPtr system, out IntPtr userdata);
-#endregion
+        #endregion
 
-#region wrapperinternal
+        #region wrapperinternal
 
         public IntPtr handle;
 
+        public System(IntPtr ptr)   { this.handle = ptr; }
         public bool hasHandle()     { return this.handle != IntPtr.Zero; }
         public void clearHandle()   { this.handle = IntPtr.Zero; }
 
-#endregion
+        #endregion
     }
 
 
@@ -1614,7 +1838,7 @@ namespace FMOD
         }
         public RESULT getTag(string name, int index, out TAG tag)
         {
-             using (StringHelper.ThreadSafeEncoding encoder = StringHelper.GetFreeHelper())
+            using (StringHelper.ThreadSafeEncoding encoder = StringHelper.GetFreeHelper())
             {
                 return FMOD5_Sound_GetTag(this.handle, encoder.byteFromStringUTF8(name), index, out tag);
             }
@@ -1623,6 +1847,15 @@ namespace FMOD
         {
             return FMOD5_Sound_GetOpenState(this.handle, out openstate, out percentbuffered, out starving, out diskbusy);
         }
+        public RESULT readData(byte[] buffer)
+        {
+            return FMOD5_Sound_ReadData(this.handle, buffer, (uint)buffer.Length, IntPtr.Zero);
+        }
+        public RESULT readData(byte[] buffer, out uint read)
+        {
+            return FMOD5_Sound_ReadData(this.handle, buffer, (uint)buffer.Length, out read);
+        }
+        [Obsolete("Use Sound.readData(byte[], out uint) or Sound.readData(byte[]) instead.")]
         public RESULT readData(IntPtr buffer, uint length, out uint read)
         {
             return FMOD5_Sound_ReadData(this.handle, buffer, length, out read);
@@ -1736,7 +1969,7 @@ namespace FMOD
             return FMOD5_Sound_GetUserData(this.handle, out userdata);
         }
 
-#region importfunctions
+        #region importfunctions
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_Sound_Release                 (IntPtr sound);
         [DllImport(VERSION.dll)]
@@ -1779,6 +2012,10 @@ namespace FMOD
         private static extern RESULT FMOD5_Sound_GetTag                  (IntPtr sound, byte[] name, int index, out TAG tag);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_Sound_GetOpenState            (IntPtr sound, out OPENSTATE openstate, out uint percentbuffered, out bool starving, out bool diskbusy);
+        [DllImport(VERSION.dll)]
+        private static extern RESULT FMOD5_Sound_ReadData                (IntPtr sound, byte[] buffer, uint length, IntPtr zero);
+        [DllImport(VERSION.dll)]
+        private static extern RESULT FMOD5_Sound_ReadData                (IntPtr sound, byte[] buffer, uint length, out uint read);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_Sound_ReadData                (IntPtr sound, IntPtr buffer, uint length, out uint read);
         [DllImport(VERSION.dll)]
@@ -1823,16 +2060,17 @@ namespace FMOD
         private static extern RESULT FMOD5_Sound_SetUserData             (IntPtr sound, IntPtr userdata);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_Sound_GetUserData             (IntPtr sound, out IntPtr userdata);
-#endregion
+        #endregion
 
-#region wrapperinternal
+        #region wrapperinternal
 
         public IntPtr handle;
 
+        public Sound(IntPtr ptr)    { this.handle = ptr; }
         public bool hasHandle()     { return this.handle != IntPtr.Zero; }
         public void clearHandle()   { this.handle = IntPtr.Zero; }
 
-#endregion
+        #endregion
     }
 
     /*
@@ -1864,7 +2102,7 @@ namespace FMOD
         RESULT setCallback                  (CHANNELCONTROL_CALLBACK callback);
         RESULT isPlaying                    (out bool isplaying);
 
-        // Panning and level adjustment.
+        // Note all 'set' functions alter a final matrix, this is why the only get function is getMixMatrix, to avoid other get functions returning incorrect/obsolete values.
         RESULT setPan                       (float pan);
         RESULT setMixLevelsOutput           (float frontleft, float frontright, float center, float lfe, float surroundleft, float surroundright, float backleft, float backright);
         RESULT setMixLevelsInput            (float[] levels, int numlevels);
@@ -1984,6 +2222,7 @@ namespace FMOD
         {
             return FMOD5_Channel_GetIndex(this.handle, out index);
         }
+
         public RESULT getSystemObject(out System system)
         {
             return FMOD5_Channel_GetSystemObject(this.handle, out system.handle);
@@ -2071,7 +2310,7 @@ namespace FMOD
             return FMOD5_Channel_IsPlaying(this.handle, out isplaying);
         }
 
-        // Panning and level adjustment.
+        // Note all 'set' functions alter a final matrix, this is why the only get function is getMixMatrix, to avoid other get functions returning incorrect/obsolete values.
         public RESULT setPan(float pan)
         {
             return FMOD5_Channel_SetPan(this.handle, pan);
@@ -2245,7 +2484,7 @@ namespace FMOD
             return FMOD5_Channel_GetUserData(this.handle, out userdata);
         }
 
-#region importfunctions
+        #region importfunctions
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_Channel_SetFrequency         (IntPtr channel, float frequency);
         [DllImport(VERSION.dll)]
@@ -2400,16 +2639,17 @@ namespace FMOD
         private static extern RESULT FMOD5_Channel_SetUserData          (IntPtr channel, IntPtr userdata);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_Channel_GetUserData          (IntPtr channel, out IntPtr userdata);
-#endregion
+        #endregion
 
-#region wrapperinternal
+        #region wrapperinternal
 
         public IntPtr handle;
 
+        public Channel(IntPtr ptr)  { this.handle = ptr; }
         public bool hasHandle()     { return this.handle != IntPtr.Zero; }
         public void clearHandle()   { this.handle = IntPtr.Zero; }
 
-#endregion
+        #endregion
     }
 
     /*
@@ -2554,7 +2794,7 @@ namespace FMOD
             return FMOD5_ChannelGroup_IsPlaying(this.handle, out isplaying);
         }
 
-        // Panning and level adjustment.
+        // Note all 'set' functions alter a final matrix, this is why the only get function is getMixMatrix, to avoid other get functions returning incorrect/obsolete values.
         public RESULT setPan(float pan)
         {
             return FMOD5_ChannelGroup_SetPan(this.handle, pan);
@@ -2728,7 +2968,7 @@ namespace FMOD
             return FMOD5_ChannelGroup_GetUserData(this.handle, out userdata);
         }
 
-#region importfunctions
+        #region importfunctions
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_ChannelGroup_Release             (IntPtr channelgroup);
         [DllImport(VERSION.dll)]
@@ -2871,16 +3111,17 @@ namespace FMOD
         private static extern RESULT FMOD5_ChannelGroup_SetUserData         (IntPtr channelgroup, IntPtr userdata);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_ChannelGroup_GetUserData         (IntPtr channelgroup, out IntPtr userdata);
-#endregion
+        #endregion
 
-#region wrapperinternal
+        #region wrapperinternal
 
         public IntPtr handle;
 
-        public bool hasHandle()     { return this.handle != IntPtr.Zero; }
-        public void clearHandle()   { this.handle = IntPtr.Zero; }
+        public ChannelGroup(IntPtr ptr) { this.handle = ptr; }
+        public bool hasHandle()         { return this.handle != IntPtr.Zero; }
+        public void clearHandle()       { this.handle = IntPtr.Zero; }
 
-#endregion
+        #endregion
     }
 
     /*
@@ -2973,7 +3214,7 @@ namespace FMOD
             return FMOD5_SoundGroup_GetUserData(this.handle, out userdata);
         }
 
-#region importfunctions
+        #region importfunctions
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_SoundGroup_Release               (IntPtr soundgroup);
         [DllImport(VERSION.dll)]
@@ -3008,16 +3249,17 @@ namespace FMOD
         private static extern RESULT FMOD5_SoundGroup_SetUserData           (IntPtr soundgroup, IntPtr userdata);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_SoundGroup_GetUserData           (IntPtr soundgroup, out IntPtr userdata);
-#endregion
+        #endregion
 
-#region wrapperinternal
+        #region wrapperinternal
 
         public IntPtr handle;
 
-        public bool hasHandle()     { return this.handle != IntPtr.Zero; }
-        public void clearHandle()   { this.handle = IntPtr.Zero; }
+        public SoundGroup(IntPtr ptr) { this.handle = ptr; }
+        public bool hasHandle()       { return this.handle != IntPtr.Zero; }
+        public void clearHandle()     { this.handle = IntPtr.Zero; }
 
-#endregion
+        #endregion
     }
 
     /*
@@ -3109,6 +3351,10 @@ namespace FMOD
         {
             return FMOD5_DSP_Reset(this.handle);
         }
+        public RESULT setCallback(DSP_CALLBACK callback)
+        {
+            return FMOD5_DSP_SetCallback(this.handle, callback);
+        }
 
         // DSP parameter control.
         public RESULT setParameterFloat(int index, float value)
@@ -3151,11 +3397,7 @@ namespace FMOD
         {
             IntPtr descPtr;
             RESULT result = FMOD5_DSP_GetParameterInfo(this.handle, index, out descPtr);
-#if (UNITY_2017_4_OR_NEWER) && !NET_4_6
-            desc = (DSP_PARAMETER_DESC)Marshal.PtrToStructure(descPtr, typeof(DSP_PARAMETER_DESC));
-#else
-            desc = Marshal.PtrToStructure<DSP_PARAMETER_DESC>(descPtr);
-#endif // (UNITY_2017_4_OR_NEWER) && !NET_4_6
+            desc = (DSP_PARAMETER_DESC)MarshalHelper.PtrToStructure(descPtr, typeof(DSP_PARAMETER_DESC));
             return result;
         }
         public RESULT getDataParameterIndex(int datatype, out int index)
@@ -3231,7 +3473,7 @@ namespace FMOD
             return FMOD5_DSP_GetCPUUsage(this.handle, out exclusive, out inclusive);
         }
 
-#region importfunctions
+        #region importfunctions
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_DSP_Release                   (IntPtr dsp);
         [DllImport(VERSION.dll)]
@@ -3272,6 +3514,8 @@ namespace FMOD
         private static extern RESULT FMOD5_DSP_GetOutputChannelFormat    (IntPtr dsp, CHANNELMASK inmask, int inchannels, SPEAKERMODE inspeakermode, out CHANNELMASK outmask, out int outchannels, out SPEAKERMODE outspeakermode);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_DSP_Reset                     (IntPtr dsp);
+        [DllImport(VERSION.dll)]
+        private static extern RESULT FMOD5_DSP_SetCallback               (IntPtr dsp, DSP_CALLBACK callback);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_DSP_SetParameterFloat         (IntPtr dsp, int index, float value);
         [DllImport(VERSION.dll)]
@@ -3318,16 +3562,17 @@ namespace FMOD
         public static extern RESULT FMOD5_DSP_GetMeteringInfo            (IntPtr dsp, out DSP_METERING_INFO inputInfo, out DSP_METERING_INFO outputInfo);
         [DllImport(VERSION.dll)]
         public static extern RESULT FMOD5_DSP_GetCPUUsage                (IntPtr dsp, out uint exclusive, out uint inclusive);
-#endregion
+        #endregion
 
-#region wrapperinternal
+        #region wrapperinternal
 
         public IntPtr handle;
 
+        public DSP(IntPtr ptr)      { this.handle = ptr; }
         public bool hasHandle()     { return this.handle != IntPtr.Zero; }
         public void clearHandle()   { this.handle = IntPtr.Zero; }
 
-#endregion
+        #endregion
     }
 
     /*
@@ -3374,7 +3619,7 @@ namespace FMOD
             return FMOD5_DSPConnection_GetUserData(this.handle, out userdata);
         }
 
-#region importfunctions
+        #region importfunctions
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_DSPConnection_GetInput        (IntPtr dspconnection, out IntPtr input);
         [DllImport(VERSION.dll)]
@@ -3393,16 +3638,17 @@ namespace FMOD
         private static extern RESULT FMOD5_DSPConnection_SetUserData     (IntPtr dspconnection, IntPtr userdata);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_DSPConnection_GetUserData     (IntPtr dspconnection, out IntPtr userdata);
-#endregion
+        #endregion
 
-#region wrapperinternal
+        #region wrapperinternal
 
         public IntPtr handle;
 
-        public bool hasHandle()     { return this.handle != IntPtr.Zero; }
-        public void clearHandle()   { this.handle = IntPtr.Zero; }
+        public DSPConnection(IntPtr ptr) { this.handle = ptr; }
+        public bool hasHandle()          { return this.handle != IntPtr.Zero; }
+        public void clearHandle()        { this.handle = IntPtr.Zero; }
 
-#endregion
+        #endregion
     }
 
     /*
@@ -3497,7 +3743,7 @@ namespace FMOD
             return FMOD5_Geometry_GetUserData(this.handle, out userdata);
         }
 
-#region importfunctions
+        #region importfunctions
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_Geometry_Release              (IntPtr geometry);
         [DllImport(VERSION.dll)]
@@ -3538,16 +3784,17 @@ namespace FMOD
         private static extern RESULT FMOD5_Geometry_SetUserData          (IntPtr geometry, IntPtr userdata);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_Geometry_GetUserData          (IntPtr geometry, out IntPtr userdata);
-#endregion
+        #endregion
 
-#region wrapperinternal
+        #region wrapperinternal
 
         public IntPtr handle;
 
+        public Geometry(IntPtr ptr) { this.handle = ptr; }
         public bool hasHandle()     { return this.handle != IntPtr.Zero; }
         public void clearHandle()   { this.handle = IntPtr.Zero; }
 
-#endregion
+        #endregion
     }
 
     /*
@@ -3596,7 +3843,7 @@ namespace FMOD
             return FMOD5_Reverb3D_GetUserData(this.handle, out userdata);
         }
 
-#region importfunctions
+        #region importfunctions
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_Reverb3D_Release             (IntPtr reverb3d);
         [DllImport(VERSION.dll)]
@@ -3615,23 +3862,29 @@ namespace FMOD
         private static extern RESULT FMOD5_Reverb3D_SetUserData         (IntPtr reverb3d, IntPtr userdata);
         [DllImport(VERSION.dll)]
         private static extern RESULT FMOD5_Reverb3D_GetUserData         (IntPtr reverb3d, out IntPtr userdata);
-#endregion
+        #endregion
 
-#region wrapperinternal
+        #region wrapperinternal
 
         public IntPtr handle;
 
+        public Reverb3D(IntPtr ptr) { this.handle = ptr; }
         public bool hasHandle()     { return this.handle != IntPtr.Zero; }
         public void clearHandle()   { this.handle = IntPtr.Zero; }
 
-#endregion
+        #endregion
     }
 
-#region String Helper Functions
+    #region Helper Functions
     [StructLayout(LayoutKind.Sequential)]
     public struct StringWrapper
     {
         IntPtr nativeUtf8Ptr;
+
+        public StringWrapper(IntPtr ptr)
+        {
+            nativeUtf8Ptr = ptr;
+        }
 
         public static implicit operator string(StringWrapper fstring)
         {
@@ -3639,6 +3892,47 @@ namespace FMOD
             {
                 return encoder.stringFromNative(fstring.nativeUtf8Ptr);
             }
+        }
+
+        public bool StartsWith(byte[] prefix)
+        {
+            if (nativeUtf8Ptr == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < prefix.Length; i++)
+            {
+                if (Marshal.ReadByte(nativeUtf8Ptr, i) != prefix[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public bool Equals(byte[] comparison)
+        {
+            if (nativeUtf8Ptr == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < comparison.Length; i++)
+            {
+                if (Marshal.ReadByte(nativeUtf8Ptr, i) != comparison[i])
+                {
+                    return false;
+                }
+            }
+
+            if (Marshal.ReadByte(nativeUtf8Ptr, comparison.Length) != 0)
+            {
+                return false;
+            }
+
+            return true;
         }
     }
 
@@ -3781,5 +4075,22 @@ namespace FMOD
         }
     }
 
-#endregion
+    // Some of the Marshal functions were marked as deprecated / obsolete, however that decision was reversed: https://github.com/dotnet/corefx/pull/10541
+    // Use the old syntax (non-generic) to ensure maximum compatibility (especially with Unity) ignoring the warnings
+    public static class MarshalHelper
+    {
+#pragma warning disable 618
+        public static int SizeOf(Type t)
+        {
+            return Marshal.SizeOf(t); // Always use Type version, never Object version as it boxes causes GC allocations
+        }
+
+        public static object PtrToStructure(IntPtr ptr, Type structureType)
+        {
+            return Marshal.PtrToStructure(ptr, structureType);
+        }
+#pragma warning restore 618
+    }
+
+    #endregion
 }
